@@ -1,43 +1,92 @@
+from flask import Blueprint, request, jsonify,current_app
+from app.services.user_service import UserService
 from flask_jwt_extended import create_access_token
-from models.user_models import User
+from datetime import datetime,timedelta,timezone
 
-class AuthController:
-    @staticmethod
-    def register(username, email, password, bio='', profile_pic_url=''):
-        """Registra un nuevo usuario"""
-        # Validaciones
-        if not username or not email or not password:
-            return {"error": "Todos los campos son requeridos"}, 400
-            
-        # Verificar si el usuario ya existe
-        if User.find_by_username(username):
-            return {"error": "Nombre de usuario ya existe"}, 400
-            
-        if User.find_by_email(email):
-            return {"error": "Email ya está registrado"}, 400
-            
-        try:
-            user_id = User.create(username, email, password, bio, profile_pic_url)
-            return {"message": "Usuario registrado correctamente", "user_id": user_id}, 201
-        except Exception as e:
-            return {"error": str(e)}, 500
+auth_bp = Blueprint('auth', __name__)
+
+@auth_bp.route('/signup', methods=['POST'])
+def register():
+    """Register a new user"""
+    data = request.get_json()
     
-    @staticmethod
-    def login(username, password):
-        """Inicia sesión de un usuario"""
-        if not username or not password:
-            return {"error": "Usuario y contraseña son requeridos"}, 400
-            
-        user = User.find_by_username(username)
+    try:
+        # Required fields
+        username = data.get('username')
+        email = data.get('email')
+        password = data.get('password')
+        # Optional fields
+        bio = data.get('bio', '')
+        profile_pic_url = data.get('profile_pic_url', '')
+        is_private = data.get('is_private', False)
         
-        if not user or not User.check_password(user, password):
-            return {"error": "Usuario o contraseña incorrectos"}, 401
-            
-        access_token = create_access_token(identity=str(user['_id']))
+        # Create user
+        user_id = UserService.create_user(
+            username=username,
+            email=email,
+            password=password,
+            bio=bio,
+            profile_pic_url=profile_pic_url,
+            is_private=is_private
+        )
         
-        return {
-            "message": "Login exitoso",
-            "token": access_token,
-            "user_id": str(user['_id']),
-            "username": user['username']
-        }, 200
+        token = create_access_token(identity=str(user_id),  
+                             expires_delta=timedelta(hours=24),  
+                             additional_claims={
+                                 'username': username,  
+                                 'exp': datetime.now(timezone.utc) + timedelta(hours=24) 
+                             })
+        
+        return jsonify({
+            'message': 'User registered successfully',
+            'token':token,
+            'user_id': user_id
+        }), 201
+        
+    except ValueError as e:
+        return jsonify({'message': str(e)}), 400
+    except Exception as e:
+        current_app.logger.error(f"Error registering user: {str(e)}")
+        return jsonify({'message': 'Error registering user'}), 500
+
+
+
+@auth_bp.route('/login', methods=['POST'])
+def login():
+    """Log in a user"""
+    data = request.get_json()
+    
+    try:
+        # Get credentials
+        username_or_email = data.get('username_or_email')
+        password = data.get('password')
+        
+        if not username_or_email or not password:
+            return jsonify({'message': 'Missing username/email or password'}), 400
+            
+        # Authenticate user
+        user = UserService.authenticate_user(username_or_email, password)
+        
+        if not user:
+            return jsonify({'message': 'Invalid credentials'}), 401
+            
+        
+        token = create_access_token(identity=str(user['_id']),  
+                            expires_delta=timedelta(hours=24),  
+                            additional_claims={
+                                'username': user['username'],  
+                                'exp': datetime.now(timezone.utc) + timedelta(hours=24) 
+                            })
+        return jsonify({
+            'message': 'Login successful',
+            'token': token,
+            'user': {
+                'id': str(user['_id']),
+                'username': user['username'],
+                'email': user['email']
+            }
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error logging in: {str(e)}")
+        return jsonify({'message': 'Error logging in'}), 500

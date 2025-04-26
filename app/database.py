@@ -1,10 +1,10 @@
 from pymongo import MongoClient
-from config import Config
-
+from app.config import Config
+ 
 # Cliente MongoDB
 client = MongoClient(Config.MONGO_URI)
 db = client[Config.DATABASE_NAME]
-
+ 
 def init_db():
     # Crear colecciones e índices
     users = db['users']
