@@ -1,4 +1,4 @@
-# 🐦 Pytweet - Backend API
+#  Backend API
 
 **Pytweet** es un backend para una red social minimalista inspirada en Twitter, desarrollado en **Python** con **Flask**.  
 Soporta funcionalidades clave como registro de usuarios, autenticación, creación de publicaciones, y más, con una arquitectura modular y escalable.
