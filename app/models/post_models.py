@@ -1,6 +1,6 @@
 from datetime import datetime
 from bson.objectid import ObjectId
-from database import db
+from app.database import db
 
 class Post:
     collection = db['posts']
