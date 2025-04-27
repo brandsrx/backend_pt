@@ -197,7 +197,7 @@ def follow_user(username):
 
 @user_bp.route('/<username>/unfollow', methods=['POST'])
 @jwt_required()
-def unfollow_user(current_user, username):
+def unfollow_user(username):
     """Unfollow a user"""
     user_id = get_jwt_identity()
     target_user = UserService.get_user_by_username(username)
