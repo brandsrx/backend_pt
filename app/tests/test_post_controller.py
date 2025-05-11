@@ -44,8 +44,8 @@ def mock_post_data():
 
 
 def test_view_post_empty(client):
-    response = client.get("/api/post/posts")
-    
+    response = client.get("/api/posts/")
+    print(response.status_code)
     assert response.status_code == 200
     assert response.json != None
     

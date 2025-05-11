@@ -10,6 +10,8 @@ def init_db():
     users = db['users']
     posts = db['posts']
     follows = db['follows']
+    notification = db['notification']
+    comments = db['comments']
     
     # Índices para mejorar el rendimiento
     users.create_index('username', unique=True)

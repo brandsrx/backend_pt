@@ -4,7 +4,15 @@ from app.services.post_service import PostService
 
 post_bp = Blueprint('post', __name__)
 
-@post_bp.route('/posts', methods=['POST'])
+@post_bp.route('/', methods=['GET'])
+def get_posts():
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 20))
+    username = request.args.get('username')
+    result, status_code = PostService.get_posts(username, page, limit)
+    return jsonify(result), status_code
+
+@post_bp.route('/', methods=['POST'])
 @jwt_required()
 def create_post():
     user_id = get_jwt_identity()
@@ -18,23 +26,14 @@ def create_post():
     
     return jsonify(result), status_code
 
-@post_bp.route('/posts/<post_id>', methods=['GET'])
+@post_bp.route('/<post_id>', methods=['GET'])
 def get_post(post_id):
     result, status_code = PostService.get_post(post_id)
     
     return jsonify(result), status_code
 
-@post_bp.route('/posts', methods=['GET'])
-def get_posts():
-    page = int(request.args.get('page', 1))
-    limit = int(request.args.get('limit', 20))
-    username = request.args.get('username')
-    
-    result, status_code = PostService.get_posts(username, page, limit)
-    
-    return jsonify(result), status_code
 
-@post_bp.route('/posts/<post_id>', methods=['DELETE'])
+@post_bp.route('/<post_id>', methods=['DELETE'])
 @jwt_required()
 def delete_post(post_id):
     user_id = get_jwt_identity()
@@ -54,9 +53,21 @@ def get_feed():
     
     return jsonify(result), status_code
 
-@post_bp.route('/posts/<post_id>/like', methods=['POST'])
+@post_bp.route('/<post_id>/like', methods=['POST'])
 @jwt_required()
 def like_post(post_id):
     result, status_code = PostService.like_post(post_id)
+    
+    return jsonify(result), status_code
+
+@post_bp.route('/<post_id>/comment', methods=['POST'])
+@jwt_required()
+def comment_post(post_id):
+    data = request.get_json()
+    username = data.get("username")
+    profile = data.get("profile_pic_url")
+    text_comment = data.get("text_comment")
+    
+    result, status_code = PostService.comment_post(post_id,username,profile_pic_url=profile,text_comment=text_comment)
     
     return jsonify(result), status_code

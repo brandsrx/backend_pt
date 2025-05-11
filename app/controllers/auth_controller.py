@@ -9,7 +9,6 @@ auth_bp = Blueprint('auth', __name__)
 def register():
     """Register a new user"""
     data = request.get_json()
-    
     try:
         # Required fields
         username = data.get('username')

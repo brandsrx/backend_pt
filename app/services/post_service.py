@@ -154,6 +154,19 @@ class PostService:
         success = Post.add_like(post_id)
         
         if success:
-            return {"message": "Like añadido correctamente"}, 200
+            return {"message": "Like añadido correctamente"}, 201
         else:
             return {"error": "No se pudo añadir el like"}, 500
+        
+    @staticmethod
+    def comment_post(post_id,username,profile_pic_url,text_comment):
+        """Create comment of post samone post_id"""
+        post = Post.find_by_id(post_id)
+        if not post:
+            return {"error":"Publicacion no encontrada"},404
+        try:
+            comment = Post.add_comment(post_id,username,profile_pic_url,text_comment)
+            return {"data":comment},201
+        except Exception as ex:
+            return {"error":ex},404
+            

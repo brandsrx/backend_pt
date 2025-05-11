@@ -1,10 +1,26 @@
 from datetime import datetime
 from bson.objectid import ObjectId
 from app.database import db
+from concurrent.futures import ThreadPoolExecutor
+
+class Comment:
+    colletion = db['comments']
+    @staticmethod
+    def create(post_id,username,profile_pic_url,text_comment=''):
+        comment_structerd = {
+            "post_id":post_id,
+            "user":{
+                "username":username,
+                "profile_pic_url":profile_pic_url
+            },
+            "text_comment":text_comment,
+            "created_at": datetime.utcnow()
+        }
+        result = Comment.colletion.insert_one(comment=comment_structerd)
+        return str(result.inserted_id)
 
 class Post:
     collection = db['posts']
-    
     @staticmethod
     def create(user_id, content, media_urls=None):
         """Crea una nueva publicación"""
@@ -15,8 +31,8 @@ class Post:
             "user_id": user_id,
             "content": content,
             "media_urls": media_urls,
+            "comments_count":0,
             "likes_count": 0,
-            "reposts_count": 0,
             "created_at": datetime.utcnow()
         }
         
@@ -64,3 +80,19 @@ class Post:
             {"$inc": {"likes_count": 1}}
         )
         return result.modified_count > 0
+   
+    
+    @staticmethod
+    def add_comment(post_id,username,profile_pic_url,text_comment):
+        """Add comment of post"""
+        Post.collection_comment.update_one(
+            {"_id": ObjectId(post_id)},
+            {"$inc": {"comments_count": 1}}
+        )
+        
+        comment_id = Comment.create(username,profile_pic_url,text_comment)
+
+        return comment_id
+        
+        
+    
