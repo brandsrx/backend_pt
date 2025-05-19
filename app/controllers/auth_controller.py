@@ -1,7 +1,9 @@
+import time
 from flask import Blueprint, request, jsonify,current_app
 from app.services.user_service import UserService
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token,jwt_required,get_jwt
 from datetime import datetime,timedelta,timezone
+from app.extensions.redis_extencion import redis_client
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -89,3 +91,14 @@ def login():
     except Exception as e:
         current_app.logger.error(f"Error logging in: {str(e)}")
         return jsonify({'message': 'Error logging in'}), 500
+
+
+@auth_bp.post('/logout')
+@jwt_required()
+def logout():
+    jti = get_jwt()['jti']
+    exp = get_jwt()['exp']
+    ttl = exp-int(time.time())
+
+    redis_client.setex(f"revoked:{jti}",ttl,"true")
+    return jsonify(msg="Token revocado exitosamente"),200

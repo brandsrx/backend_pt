@@ -1,13 +1,12 @@
-from flask_socketio import emit
+from flask_socketio import SocketIO, send, emit
+from flask import request
 
+def register_socketio_events(socketio: SocketIO):
+    @socketio.on('connect')
+    def handle_connect():
+        emit('message', {"user_id":request.sid})
 
-def register_socketio_events(socketio):
-    
-    @socketio.on("connect")
-    def handle_new_connection():
-        print("un usuario se conecto ")
-    
-    @socketio.on("disconnect")
-    def handle_disconnect():
-        print("un usuario se desconecto")
-    
+    @socketio.on('message')
+    def handle_message(msg):
+        print(f'📨 Mensaje recibido: {msg}')
+        send(msg, broadcast=True)

@@ -1,7 +1,8 @@
 from datetime import datetime
+from pymongo import ReturnDocument
 from typing import Dict, List, Optional, Any, Union
+from bson.objectid import ObjectId
 from app.models.user_models import User
-
 class UserService:
     
     @staticmethod
@@ -22,8 +23,11 @@ class UserService:
     
     @staticmethod
     def get_user_by_username(username: str) -> Optional[Dict]:
-        return User.find_by_username(username)
+        user = User.find_by_username(username)
+        return user
+
     
+
     @staticmethod
     def get_user_by_email(email: str) -> Optional[Dict]:
         return User.find_by_email(email)
@@ -62,43 +66,70 @@ class UserService:
         if user_id == target_user_id:
             raise ValueError("Un usuario no puede seguirse a sí mismo")
             
-        # Check if users exist
-        user = User.find_by_id(user_id)
-        target_user = User.find_by_id(target_user_id)
-        
-        if not user or not target_user:
+        try:
+            user_id = ObjectId(user_id)
+            target_user_id = ObjectId(target_user_id)
+        except Exception:
             return False
-            
-        # Check if already following
-        if target_user_id in user.get('following', []):
-            return True  # Already following
-            
-        # Add to following and followers lists
-        User.collection.update_one(
-            {"_id": user_id},
-            {"$addToSet": {"following": target_user_id}}
-        )
         
-        User.collection.update_one(
-            {"_id": target_user_id},
-            {"$addToSet": {"followers": user_id}}
+        result_followers = User.collection.find_one_and_update(
+            {"_id":target_user_id},
+            {"$addToSet":{"followers":user_id}},
+            return_document=ReturnDocument.BEFORE
         )
+
+        if result_followers is None:
+            return False
         
+        result_following = User.collection.find_one_and_update(
+            {"_id":user_id},
+            {"$addToSet":{"following":target_user_id}},
+            return_document=ReturnDocument.BEFORE
+        )
+        if result_following is None:
+            User.collection.update_one(
+                {"_id":target_user_id},
+                {"$pull":{"followers":user_id}}
+            )
+            return False
+        
+        # verificar si ya estaba siguiendo 
+        if target_user_id in result_following.get("following",[]):
+            return True  # ya estaba siguiendo
+
         return True
     
     @staticmethod
     def unfollow_user(user_id: str, target_user_id: str) -> bool:
-       
-        # Remove from following and followers lists
-        User.collection.update_one(
-            {"_id": user_id},
-            {"$pull": {"following": target_user_id}}
-        )
+        if user_id == target_user_id:
+            raise ValueError("Un usuario no puede dejar de seguir a si mismo")
+        try:
+            user_id = ObjectId(user_id)
+            target_user_id = ObjectId(target_user_id)
+        except Exception:
+            return False
         
-        User.collection.update_one(
-            {"_id": target_user_id},
-            {"$pull": {"followers": user_id}}
+
+        # Remove from following and followers lists
+        result_unfollower = User.collection.find_one_and_update(
+            {"_id":target_user_id},
+            {"$pull":{"followers":user_id}},
+            return_document=ReturnDocument.BEFORE
         )
+
+        if result_unfollower is None:
+            return False
+        result_unfollowing = User.collection.find_one_and_update(
+            {"_id":user_id},
+            {"$pull":{"following":target_user_id}},
+            return_document=ReturnDocument.BEFORE
+        )
+        if result_unfollowing is None:
+            User.collection.update_one(
+                {"_id":target_user_id},
+                {"$addToSet":{"followers":user_id}}
+            )
+            return False
         
         return True
     

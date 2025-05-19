@@ -1,6 +1,9 @@
-from app.models.post_models import Post
+from app.models.post_models import Post,Comment
 from app.models.user_models import User
 from app.services.user_service import UserService
+from typing import List, Dict
+
+
 class PostService:
     @staticmethod
     def create_post(user_id, content, media_urls=None):
@@ -18,7 +21,7 @@ class PostService:
             "message": "Publicación creada correctamente",
             "post_id": post_id
         }, 201
-    
+
     @staticmethod
     def get_post(post_id):
         """Obtiene una publicación por su ID"""
@@ -35,7 +38,7 @@ class PostService:
             "content": post['content'],
             "media_urls": post.get('media_urls', []),
             "likes_count": post.get('likes_count', 0),
-            "reposts_count": post.get('reposts_count', 0),
+            "comment_count":post.get('comment_count',0),
             "created_at": post['created_at'].isoformat(),
             "author": {
                 "id": str(user['_id']),
@@ -77,7 +80,7 @@ class PostService:
                 "content": post['content'],
                 "media_urls": post.get('media_urls', []),
                 "likes_count": post.get('likes_count', 0),
-                "reposts_count": post.get('reposts_count', 0),
+                "comment_count":post.get('comments_count',0),
                 "created_at": post['created_at'].isoformat(),
                 "author": {
                     "id": str(post_user['_id']),
@@ -127,7 +130,7 @@ class PostService:
                 "content": post['content'],
                 "media_urls": post.get('media_urls', []),
                 "likes_count": post.get('likes_count', 0),
-                "reposts_count": post.get('reposts_count', 0),
+                "comment_count":post.get('comment_count',0),
                 "created_at": post['created_at'].isoformat(),
                 "author": {
                     "id": str(post_user['_id']),
@@ -157,16 +160,77 @@ class PostService:
             return {"message": "Like añadido correctamente"}, 201
         else:
             return {"error": "No se pudo añadir el like"}, 500
+    @staticmethod
+    def dislike_post(post_id):
+        """Da like a una publicación"""
+        post = Post.find_by_id(post_id)
         
+        if not post:
+            return {"error": "Publicación no encontrada"}, 404
+            
+        success = Post.delete_like(post_id)
+        
+        if success:
+            return {"message": "Dislike añadido correctamente"}, 201
+        else:
+            return {"error": "No se pudo añadir el dislike"}, 500
     @staticmethod
     def comment_post(post_id,username,profile_pic_url,text_comment):
         """Create comment of post samone post_id"""
         post = Post.find_by_id(post_id)
         if not post:
             return {"error":"Publicacion no encontrada"},404
-        try:
-            comment = Post.add_comment(post_id,username,profile_pic_url,text_comment)
-            return {"data":comment},201
-        except Exception as ex:
-            return {"error":ex},404
-            
+        
+        comment = Post.add_comment(post_id,username,profile_pic_url,text_comment)
+        if comment:
+            return {"message":"Coment created"},201
+        return {"Error":"coment not created"},500
+
+    @staticmethod    
+    def view_comment(post_id):
+        comment = Comment.view_comments(post_id)
+        if comment is None or comment == []:
+            return {'message':"no data"},204
+        return comment,200
+    
+    @staticmethod
+    def delete_comment(post_id,comment_id):
+        comment = Comment.delete_comment(post_id,comment_id)
+        if comment:
+            return {'message':"Comment delete"},200
+        return {'error':"comment no delete"},400
+        
+    @staticmethod
+    def search_posts(query: str, page: int = 1, limit: int = 20) -> Dict:
+        """Buscar posts por contenido o título y devolverlos con formato de feed"""
+        skip = (page - 1) * limit
+        pattern = f".*{query}.*"
+        regex = {"$regex": pattern, "$options": "i"}
+
+        posts = Post.collection.find(
+            {"$or": [{"title": regex}, {"content": regex}]}
+        ).skip(skip).limit(limit)
+        
+        posts_list = []
+        for post in posts:
+            post_user = User.find_by_id(post['user_id'])
+            post_data = {
+                "id": str(post['_id']),
+                "content": post.get('content', ''),
+                "media_urls": post.get('media_urls', []),
+                "likes_count": post.get('likes_count', 0),
+                "comment_count": post.get('comment_count', 0),
+                "created_at": post['created_at'].isoformat() if 'created_at' in post else '',
+                "author": {
+                    "id": str(post_user['_id']),
+                    "username": post_user.get('username', ''),
+                    "profile_pic_url": post_user.get('profile_pic_url', '')
+                }
+            }
+            posts_list.append(post_data)
+
+        return {
+            "posts": posts_list,
+            "page": page,
+            "limit": limit
+        }, 200

@@ -12,7 +12,8 @@ from app.controllers.user_controller import user_bp
 from app.controllers.post_controller import post_bp
 from app.controllers.notification_controller import notification_bp
 
-from app.extensions import socketio
+from app.extensions.socketio import socketio
+from app.extensions.redis_extencion import init_extensions
 from app.sockets.socket import register_socketio_events
 
 def create_app():
@@ -28,6 +29,7 @@ def create_app():
     # Iniciamos los sockets
     socketio.init_app(app)
     register_socketio_events(socketio)
+    init_extensions(app)
     
     # Registrar blueprints
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -39,4 +41,4 @@ def create_app():
 
 if __name__ == "__main__":
     app = create_app()
-    app.run(debug=True)
+    socketio.run(app, debug=True, host="127.0.0.1", port=5000)
