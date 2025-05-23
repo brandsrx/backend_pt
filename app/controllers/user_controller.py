@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app,url_for
 from werkzeug.exceptions import BadRequest, NotFound, Unauthorized
 from flask_jwt_extended import jwt_required,get_jwt_identity
 from datetime import datetime, timedelta
@@ -9,9 +9,30 @@ from app.models.post_models import Post
 from app.services.post_service import PostService
 from app.middleware.user_middleware import verify_current_user
 from app.extensions.redis_extencion import redis_client
+from app.utils.upload_file import UploadFile
 import json
+
+
 # Create Blueprint
 user_bp = Blueprint('user', __name__)
+
+@user_bp.route("/profile/picture",methods=["POST"])
+@jwt_required()
+def update_picture_profile():
+    user_id = get_jwt_identity()
+    image = request.form.get('image')
+    update_file = UploadFile(username=user_id,target_folder='profile')
+    path_url = update_file.process_image(file=image)
+    if url is None:
+        return jsonify({'error':'No se pudo procesar la imagen'}),400
+    url = url_for('static',filename=path_url,_external=True)
+    result = UserService.update_photo_profile(user_id,new_url=url)
+
+    if result is False:
+       return jsonify({'error':'ocurrio un error a la hora de actualizar la imagen'}),500
+
+    return jsonify({'message':'Imagen actulizada correctamente'}),200 
+
 
 
 @user_bp.route('/profile', methods=['PUT'])
@@ -25,7 +46,7 @@ def update_profile():
     try:
         # Fields that can be updated
         update_data = {}
-        for field in ['username', 'email', 'bio', 'profile_pic_url']:
+        for field in ['username', 'email', 'bio']:
             if field in data:
                 update_data[field] = data[field]
                 
@@ -74,37 +95,6 @@ def update_privacy():
         current_app.logger.error(f"Error updating privacy: {str(e)}")
         return jsonify({'message': 'Error updating privacy settings'}), 500
 
-
-@user_bp.route('/notifications', methods=['PUT'])
-@jwt_required()
-def update_notifications(current_user):
-    """Update notification settings"""
-    data = request.get_json()
-    user_id = get_jwt_identity()
-    
-    try:
-        # Get notification settings
-        notification_settings = {}
-        for field in ['new_follower', 'likes', 'mentions', 'direct_messages']:
-            if field in data:
-                notification_settings[field] = bool(data[field])
-                
-        if not notification_settings:
-            return jsonify({'message': 'No valid notification settings to update'}), 400
-                
-        # Update notifications
-        if UserService.update_notification_settings(user_id, notification_settings):
-            return jsonify({'message': 'Notification settings updated successfully'}), 200
-        else:
-            return jsonify({'message': 'Error updating notification settings'}), 400
-            
-    except ValueError as e:
-        return jsonify({'message': str(e)}), 400
-    except Exception as e:
-        current_app.logger.error(f"Error updating notifications: {str(e)}")
-        return jsonify({'message': 'Error updating notification settings'}), 500
-
-
 @user_bp.route('/password', methods=['PUT'])
 @jwt_required()
 def change_password():
@@ -137,11 +127,6 @@ def change_password():
 def get_user_by_username(username):
     """Get public user profile by username"""
     #verify in cache redis
-    key = f"profile:{username}"
-    cached = redis_client.get(key)
-    if cached:
-        return jsonify(json.loads(cached)),200
-    
 
     user = UserService.get_user_by_username(username)
     if not user:
@@ -182,7 +167,6 @@ def get_user_by_username(username):
     if user.get('privacy', {}).get('show_email', False):
         user_data['email'] = user['email']
     #add en redis
-    redis_client.set(key,json.dumps({'user':user_data}),ex=3600)
     return jsonify({
         'user': user_data
     }), 200

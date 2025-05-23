@@ -16,11 +16,14 @@ class UserService:
             profile_pic_url=profile_pic_url,
             is_private=is_private
         )
-    
     @staticmethod
     def get_user_by_id(user_id: str) -> Optional[Dict]:
         return User.find_by_id(user_id)
     
+    @staticmethod
+    def update_photo_profile(user_id:str,new_url:str)->bool:
+        return User.update_photo_profile(user_id,new_url)
+
     @staticmethod
     def get_user_by_username(username: str) -> Optional[Dict]:
         user = User.find_by_username(username)

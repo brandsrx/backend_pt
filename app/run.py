@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask,jsonify
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from flasgger import Swagger
@@ -15,11 +15,13 @@ from app.controllers.notification_controller import notification_bp
 from app.extensions.socketio import socketio
 from app.extensions.redis_extencion import init_extensions
 from app.sockets.socket import register_socketio_events
+import os
 
 def create_app():
-    app = Flask(__name__)
+    app = Flask(__name__,static_folder='static',static_url_path='/static')
     app.config.from_object(Config)
-    
+
+
     jwt = JWTManager(app)
     CORS(app)
 

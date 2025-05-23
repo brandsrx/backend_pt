@@ -1,9 +1,11 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify,current_app,url_for
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.services.post_service import PostService
 from app.extensions.redis_extencion import redis_client
 from app.middleware.ratelimit_middleware import rate_limiter
+from app.utils.upload_file import UploadFile
 import json
+import os
 
 post_bp = Blueprint('post', __name__)
 
@@ -13,16 +15,9 @@ def get_posts():
     page = int(request.args.get('page', 1))
     limit = int(request.args.get('limit', 20))
     username = request.args.get('username')
-    cache_key = "posts:all"
-
-    cached = redis_client.get(cache_key)
-    if cached:
-        print("datos en la cache")
-        return json.loads(cached)
-
+    
 
     result, status_code = PostService.get_posts(username, page, limit)
-    redis_client.set(cache_key,json.dumps(result),ex=3600)
     return jsonify(result), status_code
 
 
@@ -30,15 +25,24 @@ def get_posts():
 @jwt_required()
 def create_post():
     user_id = get_jwt_identity()
-    data = request.get_json()
-    
+    content = request.form.get('content', '')
+    files = request.files.getlist('image')  # múltiples archivos con el campo 'image'
+
+    uploader = UploadFile(username=user_id, target_folder="posts")
+    saved_paths = uploader.process_images(files)
+
+    urls = [
+        url_for('static', filename=path, _external=True)
+        for path in saved_paths
+    ]
     result, status_code = PostService.create_post(
         user_id=user_id,
-        content=data.get('content'),
-        media_urls=data.get('media_urls', [])
+        content=content,
+        media_urls=urls
     )
+
+    return jsonify(result),status_code
     
-    return jsonify(result), status_code
 
 @post_bp.route('/<post_id>', methods=['GET'])
 def get_post(post_id):

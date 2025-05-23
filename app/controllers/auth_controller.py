@@ -1,56 +1,56 @@
 import time
-from flask import Blueprint, request, jsonify,current_app
+from flask import Blueprint, request, jsonify,current_app,url_for
 from app.services.user_service import UserService
 from flask_jwt_extended import create_access_token,jwt_required,get_jwt
 from datetime import datetime,timedelta,timezone
 from app.extensions.redis_extencion import redis_client
-
+from app.utils.upload_file import UploadFile
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/signup', methods=['POST'])
 def register():
-    """Register a new user"""
-    data = request.get_json()
     try:
-        # Required fields
-        username = data.get('username')
-        email = data.get('email')
-        password = data.get('password')
-        # Optional fields
-        bio = data.get('bio', '')
-        profile_pic_url = data.get('profile_pic_url', '')
-        is_private = data.get('is_private', False)
-        
-        # Create user
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        bio = request.form.get('bio', '')
+        is_private = request.form.get('is_private', 'false').lower() == 'true'
+        image = request.files.get('profile_pic')
+
+        if not username or not email or not password:
+            return jsonify({'message': 'Missing required fields'}), 400
         user_id = UserService.create_user(
             username=username,
             email=email,
             password=password,
             bio=bio,
-            profile_pic_url=profile_pic_url,
+            profile_pic_url="",
             is_private=is_private
         )
-        
-        token = create_access_token(identity=str(user_id),  
-                             expires_delta=timedelta(hours=24),  
-                             additional_claims={
-                                 'username': username,  
-                                 'exp': datetime.now(timezone.utc) + timedelta(hours=24) 
-                             })
-        
+
+        if image:
+            uploader = UploadFile(user_id, 'profile')
+            saved_path = uploader.process_images(image)
+            url = url_for('static', filename=saved_path, _external=True)
+            UserService.update_user_profile(user_id, {'profile_pic_url': url})
+
+        token = create_access_token(
+            identity=str(user_id),
+            expires_delta=timedelta(hours=24),
+            additional_claims={'username': username}
+        )
+
         return jsonify({
             'message': 'User registered successfully',
-            'token':token,
+            'token': token,
             'user_id': user_id
         }), 201
-        
+
     except ValueError as e:
         return jsonify({'message': str(e)}), 400
     except Exception as e:
-        current_app.logger.error(f"Error registering user: {str(e)}")
+        current_app.logger.exception("Error registering user")
         return jsonify({'message': 'Error registering user'}), 500
-
-
 
 @auth_bp.route('/login', methods=['POST'])
 def login():

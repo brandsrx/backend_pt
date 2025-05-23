@@ -79,7 +79,20 @@ class User:
     def find_by_email(email):
         """Busca un usuario por su email"""
         return User.collection.find_one({"email": email})
-    
+    @staticmethod
+    def update_photo_profile(user_id:str,new_url:str):
+        updated_url_photo = {
+            "profile_pic_url":new_url
+        }
+        updated_url_photo['updated_at'] = datetime.utcnow()
+
+        result = User.collection.update_one(
+            {'_id':ObjectId(user_id)},
+            {"$set":updated_url_photo}
+        )
+
+        return result.modified_count>0
+
     @staticmethod
     def update_profile(user_id, update_data):
         """Actualiza datos del perfil (username, email, bio, profile_pic_url)"""
