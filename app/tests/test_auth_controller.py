@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 from bson import ObjectId
 from datetime import datetime, timedelta
 
-path_signup = "/auth/signup"
-path_login = "/auth/login"
+path_signup = "/api/auth/signup"
+path_login = "/api/auth/login"
 
 def test_signup_success(client, mock_user_service, mock_jwt):
     user_data = {

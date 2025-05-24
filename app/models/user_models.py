@@ -61,7 +61,47 @@ class User:
         
         result = User.collection.insert_one(user)
         return str(result.inserted_id)
+    @staticmethod
+    def get_followers_by_user_id(user_id):
+        try:
+            followers_ids = User.collection.find(
+                {"_id":ObjectId(user_id)},
+                {"followers":1,"_id":0}
+                )
+            return list(followers_ids)[0]['followers']
+        except Exception as ex:
+            print('ocurrio un errror a la hora de procesar')
+            return False
+    @staticmethod
+    def get_following_by_user_id(user_id):
+        try:
+            pipeline = [
+                # Match the user by _id
+                {"$match": {"_id": ObjectId(user_id)}},
+                # Unwind the following array to process each element
+                {"$unwind": {"path": "$following", "preserveNullAndEmptyArrays": True}},
+                # Sample up to 5 random elements
+                {"$sample": {"size": 5}},
+                # Group to collect the sampled following IDs into a list
+                {
+                    "$group": {
+                        "_id": None,
+                        "following": {"$push": "$following"}
+                    }
+                },
+                # Project to return only the following array
+                {"$project": {"_id": 0, "following": 1}}
+            ]
+            
+            result = list(User.collection.aggregate(pipeline))
+            
+            # Return the following array if it exists, otherwise an empty list
+            return result[0]["following"] if result else []
     
+        except Exception as e:
+            print(f"Error fetching random following: {str(e)}")
+            return []
+
     @staticmethod
     def find_by_id(user_id):
         """Busca un usuario por su ID"""
@@ -79,7 +119,20 @@ class User:
     def find_by_email(email):
         """Busca un usuario por su email"""
         return User.collection.find_one({"email": email})
-    
+    @staticmethod
+    def update_photo_profile(user_id:str,new_url:str):
+        updated_url_photo = {
+            "profile_pic_url":new_url
+        }
+        updated_url_photo['updated_at'] = datetime.utcnow()
+
+        result = User.collection.update_one(
+            {'_id':ObjectId(user_id)},
+            {"$set":updated_url_photo}
+        )
+
+        return result.modified_count>0
+
     @staticmethod
     def update_profile(user_id, update_data):
         """Actualiza datos del perfil (username, email, bio, profile_pic_url)"""

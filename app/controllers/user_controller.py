@@ -1,31 +1,39 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app,url_for
 from werkzeug.exceptions import BadRequest, NotFound, Unauthorized
 from flask_jwt_extended import jwt_required,get_jwt_identity
 from datetime import datetime, timedelta
 from app.services.user_service import UserService
 from bson import ObjectId
+from services.time_line_service import TimeLineService
+from app.models.post_models import Post
+from app.services.post_service import PostService
+from app.middleware.user_middleware import verify_current_user
+from app.extensions.redis_extencion import redis_client
+from app.utils.upload_file import UploadFile
+import json
+
 
 # Create Blueprint
 user_bp = Blueprint('user', __name__)
 
-@user_bp.route('/profile', methods=['GET'])
+@user_bp.route("/profile/picture",methods=["PUT"])
 @jwt_required()
-def get_profile():
-    """Get current user's profile"""
-    # Remove sensitive information
+def update_picture_profile():
     user_id = get_jwt_identity()
-    user_data = UserService.get_user_by_id(user_id=user_id)
-    
-    if user_data is None:
-        return jsonify({"message":"User not exits"}),404
-   
-    user_data = {k: (str(v) if isinstance(v, ObjectId) else v) for k, v in user_data.items()}
-    
-    # Eliminar la información sensible (como la contraseña)
-    user_data = {k: v for k, v in user_data.items() if k != 'password'}
-    return jsonify({
-        'user': user_data
-    }), 200
+    image = request.form.get('profile_pic_url')
+    update_file = UploadFile(username=user_id,target_folder='profile')
+    path_url = update_file.process_image(file=image)
+    if url is None:
+        return jsonify({'error':'No se pudo procesar la imagen'}),400
+    url = url_for('static',filename=path_url,_external=True)
+    result = UserService.update_photo_profile(user_id,new_url=url)
+
+    if result is False:
+       return jsonify({'error':'ocurrio un error a la hora de actualizar la imagen'}),500
+
+    return jsonify({'message':'Imagen actulizada correctamente'}),200 
+
+
 
 @user_bp.route('/profile', methods=['PUT'])
 @jwt_required()
@@ -38,7 +46,7 @@ def update_profile():
     try:
         # Fields that can be updated
         update_data = {}
-        for field in ['username', 'email', 'bio', 'profile_pic_url']:
+        for field in ['username', 'email', 'bio']:
             if field in data:
                 update_data[field] = data[field]
                 
@@ -87,37 +95,6 @@ def update_privacy():
         current_app.logger.error(f"Error updating privacy: {str(e)}")
         return jsonify({'message': 'Error updating privacy settings'}), 500
 
-
-@user_bp.route('/notifications', methods=['PUT'])
-@jwt_required()
-def update_notifications(current_user):
-    """Update notification settings"""
-    data = request.get_json()
-    user_id = get_jwt_identity()
-    
-    try:
-        # Get notification settings
-        notification_settings = {}
-        for field in ['new_follower', 'likes', 'mentions', 'direct_messages']:
-            if field in data:
-                notification_settings[field] = bool(data[field])
-                
-        if not notification_settings:
-            return jsonify({'message': 'No valid notification settings to update'}), 400
-                
-        # Update notifications
-        if UserService.update_notification_settings(user_id, notification_settings):
-            return jsonify({'message': 'Notification settings updated successfully'}), 200
-        else:
-            return jsonify({'message': 'Error updating notification settings'}), 400
-            
-    except ValueError as e:
-        return jsonify({'message': str(e)}), 400
-    except Exception as e:
-        current_app.logger.error(f"Error updating notifications: {str(e)}")
-        return jsonify({'message': 'Error updating notification settings'}), 500
-
-
 @user_bp.route('/password', methods=['PUT'])
 @jwt_required()
 def change_password():
@@ -146,25 +123,50 @@ def change_password():
 
 
 @user_bp.route('/<username>', methods=['GET'])
+@verify_current_user("profile")
 def get_user_by_username(username):
     """Get public user profile by username"""
+    #verify in cache redis
+
     user = UserService.get_user_by_username(username)
-    
     if not user:
         return jsonify({'message': 'User not found'}), 404
-        
+    user_id = str(user['_id'])
+    try:
+        post = Post.find_by_user(user_id)
+        processed_posts = [
+                {
+                    "id": str(post['_id']),
+                    "content": post['content'],
+                    "media_urls": post.get('media_urls', []),  # Usa get() para campos opcionales
+                    "likes_count": post.get('likes_count', 0),
+                    "reposts_count": post.get('reposts_count', 0),
+                    "created_at": post['created_at'].isoformat(),  # Convierte datetime a ISO string
+                    "author": {
+                        "id": user_id,  # Asume que 'user' está disponible en el contexto
+                        "username": user['username'],
+                        "profile_pic_url": user.get('profile_pic_url', '')
+                    }
+                }
+                for post in Post.collection.find({"user_id": user_id})
+            ]
+    except Exception:
+        processed_posts=[]
     # Remove sensitive information
     user_data = {
-        'username': user['username'],
-        'bio': user['bio'],
-        'profile_pic_url': user['profile_pic_url'],
-        'created_at': user['created_at']
-    }
-    
+            "id":str(user['_id']),
+            "username":user['username'],
+            "email":user['email'],
+            "bio": user['bio'],
+            "profile_pic_url":user['profile_pic_url'],
+            "followers": len(user['followers']),
+            "following": len(user['following']),
+            "posts":processed_posts
+        } 
     # Include email only if user allows it
     if user.get('privacy', {}).get('show_email', False):
         user_data['email'] = user['email']
-        
+    #add en redis
     return jsonify({
         'user': user_data
     }), 200
@@ -175,13 +177,17 @@ def get_user_by_username(username):
 def follow_user(username):
     """Follow a user"""
     user_id = get_jwt_identity()
+    redis_key = f"following:{user_id}"
     target_user = UserService.get_user_by_username(username)
-    
+    key_verify = f"recommendations:users:{user_id}"
+    if redis_client.exists(key_verify):
+        redis_client.delete(key_verify)
     if not target_user:
         return jsonify({'message': 'User not found'}), 404
-        
     target_user_id = str(target_user['_id'])
-    
+
+    if redis_client.exists(redis_key):
+        redis_client.sadd(redis_key,target_user_id)
     try:
         if UserService.follow_user(user_id, target_user_id):
             return jsonify({'message': f'Now following {username}'}), 200
@@ -197,16 +203,20 @@ def follow_user(username):
 
 @user_bp.route('/<username>/unfollow', methods=['POST'])
 @jwt_required()
-def unfollow_user(current_user, username):
+def unfollow_user(username):
     """Unfollow a user"""
     user_id = get_jwt_identity()
     target_user = UserService.get_user_by_username(username)
-    
+    redis_key = f"following:{user_id}"
+    key_verify = f"recommendations:users:{user_id}"
+    if redis_client.exists(key_verify):
+        redis_client.delete(key_verify) 
     if not target_user:
         return jsonify({'message': 'User not found'}), 404
         
     target_user_id = str(target_user['_id'])
-    
+    if redis_client.exists(redis_key):
+        redis_client.srem(redis_key,target_user_id)
     try:
         if UserService.unfollow_user(user_id, target_user_id):
             return jsonify({'message': f'Unfollowed {username}'}), 200
@@ -218,19 +228,29 @@ def unfollow_user(current_user, username):
         return jsonify({'message': 'Error unfollowing user'}), 500
 
 
+import json
+
 @user_bp.route('/search', methods=['GET'])
-def search_users():
-    """Search for users"""
+def search():
     query = request.args.get('q', '')
     limit = int(request.args.get('limit', 20))
     skip = int(request.args.get('skip', 0))
     
     if not query:
         return jsonify({'message': 'Missing search query'}), 400
-        
+    
+    # Key para Redis que identifica la búsqueda con parámetros
+    redis_key = f"search:{query}:{limit}:{skip}"
+    
+    # Intentamos obtener resultados cacheados
+    cached = redis_client.get(redis_key)
+    if cached:
+        # Si existe cache, devolvemos directamente
+        return cached, 200, {'Content-Type': 'application/json'}
+    
+    # Si no hay cache, hacemos las búsquedas en BD
     users = UserService.search_users(query, limit, skip)
     
-    # Remove sensitive information
     users_data = []
     for user in users:
         user_data = {
@@ -238,14 +258,39 @@ def search_users():
             'bio': user['bio'],
             'profile_pic_url': user['profile_pic_url']
         }
-        
-        # Include email only if user allows it
         if user.get('privacy', {}).get('show_email', False):
             user_data['email'] = user['email']
-            
         users_data.append(user_data)
     
-    return jsonify({
+    
+    
+    response = {
         'users': users_data,
-        'count': len(users_data)
-    }), 200
+        'count_users': len(users_data),
+    }
+    
+    # Guardamos en Redis el resultado serializado a JSON con expiración (p.ej. 1 hora)
+    redis_client.set(redis_key, json.dumps(response), ex=3600)
+    
+    return jsonify(response), 200
+
+
+
+@user_bp.get("/recommend")
+@jwt_required()
+def users_recommend():
+    user_id = get_jwt_identity()
+    users:list = TimeLineService.get_list_user(user_id=user_id)
+    print("userssssssss222222222222222222")
+    print(users)
+    cache_key = f"recommendations:users:{user_id}"
+    if redis_client.exists(cache_key) and users != []:
+        cached = redis_client.get(cache_key)
+        return jsonify(json.loads(cached))
+    users = [{
+        'username':user['username'],
+        'profile_pic_url':user['profile_pic_url']}
+        for user in users
+        ]
+    redis_client.set(cache_key, json.dumps(users), ex=3600)
+    return users

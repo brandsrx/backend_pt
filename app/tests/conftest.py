@@ -1,18 +1,27 @@
 import pytest
 from flask import Flask
 from unittest.mock import MagicMock, patch
-from app.config import Config
-from app.run import app as aplication
 from flask_jwt_extended import create_access_token
-@pytest.fixture
-def app():
-    aplication.config['TESTING'] = True
-    aplication.config.from_object(Config)
-    return aplication
+from app.run import create_app
 
-@pytest.fixture
+@pytest.fixture()
+def app():
+    app = create_app()
+    app.config.update({
+        "TESTING":True,
+    })
+    yield app
+    
+@pytest.fixture()
 def client(app):
-    return app.test_client()
+    with app.test_client() as testing_client:
+        with app.app_context():
+            yield testing_client
+
+@pytest.fixture()
+def runner(app):
+    return app.test_cli_runner()
+
 
 @pytest.fixture
 def mock_user_service():
