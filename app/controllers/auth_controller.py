@@ -15,7 +15,7 @@ def register():
         password = request.form.get('password')
         bio = request.form.get('bio', '')
         is_private = request.form.get('is_private', 'false').lower() == 'true'
-        image = request.files.get('profile_pic')
+        image = request.files.get('profile_pic_url')
 
         if not username or not email or not password:
             return jsonify({'message': 'Missing required fields'}), 400
@@ -30,7 +30,7 @@ def register():
 
         if image:
             uploader = UploadFile(user_id, 'profile')
-            saved_path = uploader.process_images(image)
+            saved_path = uploader.process_image(image)
             url = url_for('static', filename=saved_path, _external=True)
             UserService.update_user_profile(user_id, {'profile_pic_url': url})
 

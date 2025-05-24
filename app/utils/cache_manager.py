@@ -1,83 +1,111 @@
 import redis
-from pymongo import MongoClient
-from datetime import timedelta
 import json
-from functools import wraps
+from bson import ObjectId
+from pymongo.collection import Collection
+from app.models.post_models import Post
 
 class CacheManager:
-    def __init__(self, app=None):
-        self.redis_client = None
-        self.mongo_client = None
-        self.app = None
+    def __init__(self, redis_client: redis.Redis, default_post_ttl=3600, default_id_list_ttl=300):
+        self.redis = redis_client
+        self.posts = Post.collection
+        self.post_ttl = default_post_ttl
+        self.id_list_ttl = default_id_list_ttl
+
+    def _serialize(self, doc):
+        doc['_id'] = str(doc['_id'])
+        return doc
+
+    def _deserialize(self, data):
+        return json.loads(data)
+
+    def _post_cache_key(self, post_id):
+        return f"post:{post_id}"
+
+    def _user_post_ids_key(self, user_id):
+        return f"user_post_ids:{user_id}"
+
+    def _user_feed_key(self, user_id: str):
+        return f"user_feed:{user_id}"
+    
+    def invalidate_user_feed(self, user_id: str):
+        self.redis.delete(self._user_feed_key(user_id))
+
+    def get_user_feed(self,user_id):
+        key = self._user_feed_key(user_id)
+        cached = self.redis.get(key)
+        if cached:
+            return self._deserialize(cached)
+        return False
+
+    def create_user_feed(self, user_id: str, posts):
+        """Obtiene el feed cacheado o lo genera consultando MongoDB"""
+        key = self._user_feed_key(user_id)
+        # Cachear el feed
+        self.redis.set(key, json.dumps(posts), ex=60)  # TTL corto (60s)
+        return posts
+
+    # -----------------------
+    # Post individual
+    # -----------------------
+    def get_post(self, post_id: str):
+        key = self._post_cache_key(post_id)
+        cached = self.redis.get(key)
+        if cached:
+            return self._deserialize(cached)
+
+        post = self.posts.find_one({"_id": ObjectId(post_id)})
+        if post:
+            data = self._serialize(post)
+            self.redis.set(key, json.dumps(data), ex=self.post_ttl)
+            return data
+        return None
+
+    def cache_post(self, post_data: dict):
+        post_id = str(post_data['_id'])
+        key = self._post_cache_key(post_id)
+        self.redis.set(key, json.dumps(self._serialize(post_data)), ex=self.post_ttl)
+
+    def invalidate_post(self, post_id: str):
+        self.redis.delete(self._post_cache_key(post_id))
+
+    # -----------------------
+    # Lista de IDs de posts
+    # -----------------------
+    def get_user_post_ids(self, user_id: str, limit=50):
+        key = self._user_post_ids_key(user_id)
+        cached = self.redis.get(key)
+        if cached:
+            return self._deserialize(cached)
+
+        cursor = self.posts.find({"user_id": user_id}).sort("created_at", -1).limit(limit)
+        post_ids = [str(post['_id']) for post in cursor]
+        self.redis.set(key, json.dumps(post_ids), ex=self.id_list_ttl)
+        return post_ids
+
+    def invalidate_user_post_ids(self, user_id: str):
+        self.redis.delete(self._user_post_ids_key(user_id))
+
+    # -----------------------
+    # Posts de un usuario
+    # -----------------------
+    def get_user_posts(self, user_id: str):
+        post_ids = self.get_user_post_ids(user_id)
+        posts = []
+        for pid in post_ids:
+            post = self.get_post(pid)
+            if post:
+                posts.append(post)
+        return posts
+
+    # -----------------------
+    # Añadir un nuevo post
+    # -----------------------
+    def add_post(self, user_id: str, post_data: dict):
+        result = self.posts.insert_one(post_data)
+        post_data['_id'] = result.inserted_id
+
+        self.cache_post(post_data)
+        self.invalidate_user_post_ids(user_id)
+        self.invalidate_user_feed(user_id)
         
-        if app is not None:
-            self.init_app(app)
-    
-    def get_from_cache(self, key):
-        """Obtiene datos de Redis"""
-        cached_data = self.redis_client.get(key)
-        return json.loads(cached_data) if cached_data else None
-    
-    def set_to_cache(self, key, data, ttl=None):
-        """Guarda datos en Redis con tiempo de expiración"""
-        if ttl is not None:
-            self.redis_client.setex(key, timedelta(seconds=ttl), json.dumps(data))
-        else:
-            self.redis_client.set(key, json.dumps(data))
-    
-    def invalidate_cache(self, *keys):
-        """Elimina una o varias claves de Redis"""
-        for key in keys:
-            self.redis_client.delete(key)
-    
-    def cacheable(self, key_prefix, ttl=3600):
-        """
-        Decorador para cachear resultados de funciones.
-        
-        Ejemplo:
-        @cache_manager.cacheable(key_prefix='user_posts', ttl=300)
-        def get_user_posts(user_id):
-            # Lógica para obtener posts
-        """
-        def decorator(f):
-            @wraps(f)
-            def wrapper(*args, **kwargs):
-                # Genera una clave única basada en los argumentos
-                cache_key = f"{key_prefix}:{':'.join(str(arg) for arg in args)}:{':'.join(f'{k}={v}' for k, v in kwargs.items())}"
-                
-                # Intenta obtener de caché
-                cached = self.get_from_cache(cache_key)
-                if cached is not None:
-                    self.app.logger.debug(f'Cache hit for key: {cache_key}')
-                    return cached
-                
-                # Si no está en caché, ejecuta la función y guarda el resultado
-                result = f(*args, **kwargs)
-                self.set_to_cache(cache_key, result, ttl)
-                return result
-            return wrapper
-        return decorator
-    
-    def cache_update(self, *key_prefixes):
-        """
-        Decorador para invalidar caché después de operaciones de escritura.
-        
-        Ejemplo:
-        @cache_manager.cache_update('user_posts')
-        def create_post(user_id, post_data):
-            # Lógica para crear post
-        """
-        def decorator(f):
-            @wraps(f)
-            def wrapper(*args, **kwargs):
-                result = f(*args, **kwargs)
-                
-                # Invalida todas las claves relacionadas con los prefijos
-                for prefix in key_prefixes:
-                    keys = self.redis_client.keys(f"{prefix}:*")
-                    if keys:
-                        self.redis_client.delete(*keys)
-                
-                return result
-            return wrapper
-        return decorator
+        return str(result.inserted_id)

@@ -16,11 +16,11 @@ import json
 # Create Blueprint
 user_bp = Blueprint('user', __name__)
 
-@user_bp.route("/profile/picture",methods=["POST"])
+@user_bp.route("/profile/picture",methods=["PUT"])
 @jwt_required()
 def update_picture_profile():
     user_id = get_jwt_identity()
-    image = request.form.get('image')
+    image = request.form.get('profile_pic_url')
     update_file = UploadFile(username=user_id,target_folder='profile')
     path_url = update_file.process_image(file=image)
     if url is None:
@@ -177,11 +177,17 @@ def get_user_by_username(username):
 def follow_user(username):
     """Follow a user"""
     user_id = get_jwt_identity()
+    redis_key = f"following:{user_id}"
     target_user = UserService.get_user_by_username(username)
+    key_verify = f"recommendations:users:{user_id}"
+    if redis_client.exists(key_verify):
+        redis_client.delete(key_verify)
     if not target_user:
         return jsonify({'message': 'User not found'}), 404
-        
     target_user_id = str(target_user['_id'])
+
+    if redis_client.exists(redis_key):
+        redis_client.sadd(redis_key,target_user_id)
     try:
         if UserService.follow_user(user_id, target_user_id):
             return jsonify({'message': f'Now following {username}'}), 200
@@ -201,12 +207,16 @@ def unfollow_user(username):
     """Unfollow a user"""
     user_id = get_jwt_identity()
     target_user = UserService.get_user_by_username(username)
-    
+    redis_key = f"following:{user_id}"
+    key_verify = f"recommendations:users:{user_id}"
+    if redis_client.exists(key_verify):
+        redis_client.delete(key_verify) 
     if not target_user:
         return jsonify({'message': 'User not found'}), 404
         
     target_user_id = str(target_user['_id'])
-    
+    if redis_client.exists(redis_key):
+        redis_client.srem(redis_key,target_user_id)
     try:
         if UserService.unfollow_user(user_id, target_user_id):
             return jsonify({'message': f'Unfollowed {username}'}), 200
@@ -269,15 +279,16 @@ def search():
 @user_bp.get("/recommend")
 @jwt_required()
 def users_recommend():
-    users:list = TimeLineService.get_list_user()
-    current_user = get_jwt_identity()
-    cache_key = f"recommendations:users:{current_user}"
-    cached = redis_client.get(cache_key)
-    if cached:
+    user_id = get_jwt_identity()
+    users:list = TimeLineService.get_list_user(user_id=user_id)
+    print("userssssssss222222222222222222")
+    print(users)
+    cache_key = f"recommendations:users:{user_id}"
+    if redis_client.exists(cache_key) and users != []:
+        cached = redis_client.get(cache_key)
         return jsonify(json.loads(cached))
     users = [{
         'username':user['username'],
-        'email':user['email'],
         'profile_pic_url':user['profile_pic_url']}
         for user in users
         ]

@@ -1,5 +1,6 @@
 from app.models.post_models import Post,Comment
 from app.models.user_models import User
+from bson.objectid import ObjectId
 from app.services.user_service import UserService
 from typing import List, Dict
 
@@ -50,29 +51,15 @@ class PostService:
         return post_data, 200
     
     @staticmethod
-    def get_posts(username=None, page=1, limit=20):
-        """Obtiene publicaciones con paginación"""
-        skip = (page - 1) * limit
+    def get_posts(posts_ids:list,page=1, limit=20):
         
-        # Filtrar por usuario (opcional)
-        user_id = None
-        if username:
-            user = User.find_by_username(username)
-            if not user:
-                return {"error": "Usuario no encontrado"}, 404
-            user_id = str(user['_id'])
-            
-            posts = Post.find_by_user(user_id, skip, limit)
-        else:
-            # Si no hay username, traer los más recientes de todos
-            posts = list(Post.collection.find()
-                        .sort("created_at", -1)
-                        .skip(skip)
-                        .limit(limit))
+        object_ids = [ObjectId(post_id) for post_id in posts_ids]
+        posts = list(Post.collection.find(
+            {"_id":{"$in":object_ids}}
+        ))
         
         posts_list = []
         for post in posts:
-            # Obtener datos del autor
             post_user = User.find_by_id(post['user_id'])
             
             post_data = {

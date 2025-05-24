@@ -1,4 +1,4 @@
-from pymongo import MongoClient, ASCENDING
+from pymongo import MongoClient, ASCENDING,DESCENDING
 from app.config import Config
 from pymongo.errors import OperationFailure
 # Cliente MongoDB
@@ -19,16 +19,18 @@ def init_db():
     # Aplicar índices
     ensure_index(db.users, [('username', ASCENDING)], unique=True, name='username_unique')
     ensure_index(db.users, [('email', ASCENDING)], unique=True, name='email_unique')
-    ensure_index(db.users, [
-        ('username', ASCENDING),
-        ('email', ASCENDING),
-        ('profile_pic_url', ASCENDING)
-    ], name='user_profile_composite')
-    
-    ensure_index(db.posts, [('user_id', ASCENDING)], name='post_user_index')
-    ensure_index(db.follows, [
-        ('follower_id', ASCENDING),
-        ('following_id', ASCENDING)
-    ], unique=True, name='follow_relation_unique')
+
+    # Mejor índice para posts con paginación por fecha
+    ensure_index(db.posts, [('user_id', ASCENDING), ('created_at', DESCENDING)], name='post_user_date_index')
+
+    # Índice follow único
+    ensure_index(db.follows, [('follower_id', ASCENDING), ('following_id', ASCENDING)], unique=True, name='follow_relation_unique')
+
+    # Índice inverso para listar seguidores (opcional)
+    ensure_index(db.follows, [('following_id', ASCENDING), ('follower_id', ASCENDING)], name='follow_inverse_index')
+
+    #indices para posts
+    ensure_index(db.posts, [('user_id', ASCENDING), ('created_at', DESCENDING)], name='post_user_date_index')
+
     
     return db

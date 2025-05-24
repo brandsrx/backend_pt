@@ -1,23 +1,42 @@
 from flask import Blueprint, request, jsonify,current_app,url_for
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity,verify_jwt_in_request
 from app.services.post_service import PostService
 from app.extensions.redis_extencion import redis_client
 from app.middleware.ratelimit_middleware import rate_limiter
 from app.utils.upload_file import UploadFile
+from app.utils.feed_cache import FeedCache
+from datetime import datetime
 import json
 import os
 
 post_bp = Blueprint('post', __name__)
 
+def reload_feed_machine():
+    post_ids:list = FeedCache.get_feed_global()  
+    if post_ids == []:
+        FeedCache.repopulate_global_feed()
+    return FeedCache.get_feed_global()
+
 @post_bp.route('/', methods=['GET'])
 @rate_limiter(limit=100, period=60)
 def get_posts():
+    verify_jwt_in_request(optional=True)
+    user_id = get_jwt_identity()
     page = int(request.args.get('page', 1))
     limit = int(request.args.get('limit', 20))
-    username = request.args.get('username')
-    
+    post_ids:list = []
 
-    result, status_code = PostService.get_posts(username, page, limit)
+    if user_id is  None:
+        post_ids = reload_feed_machine()
+    else:    
+        post_ids:list = FeedCache.get_feed_user(user_id,10)
+        if post_ids == []:
+            FeedCache.repopulate_user_feed(user_id)
+            post_ids:list = FeedCache.get_feed_user(user_id,10)
+            
+    if post_ids == []:
+        post_ids = reload_feed_machine()
+    result, status_code = PostService.get_posts(post_ids, page, limit)
     return jsonify(result), status_code
 
 
@@ -35,17 +54,23 @@ def create_post():
         url_for('static', filename=path, _external=True)
         for path in saved_paths
     ]
+
+
     result, status_code = PostService.create_post(
         user_id=user_id,
         content=content,
         media_urls=urls
     )
+    FeedCache.add_post_to_feed(user_id,result['post_id'])
 
     return jsonify(result),status_code
     
 
 @post_bp.route('/<post_id>', methods=['GET'])
 def get_post(post_id):
+    post = cache.get_post(post_id)
+    if post:
+        return jsonify(post),200
     result, status_code = PostService.get_post(post_id)
     
     return jsonify(result), status_code
