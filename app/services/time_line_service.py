@@ -4,23 +4,6 @@ from bson.objectid import ObjectId
 from app.extensions.redis_extencion import redis_client
 
 class TimeLineService:
-    def __init__(self):
-        pass
-
-    @staticmethod
-    def timeline_recommend_users(user_id:str):
-
-        current_user:list = User.find_by_id(user_id)["following"]
-            
-        all_followings_user = User.collection.find(
-            {"_id":{"$in":current_user}},
-            {"following":1}
-        )
-
-        for i in all_followings_user:
-            print(i)
-    from bson import ObjectId
-
     @staticmethod
     def get_list_user(user_id, limit=5, projection=None):
         redis_key = f"following:{user_id}"

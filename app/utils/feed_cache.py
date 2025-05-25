@@ -33,12 +33,14 @@ class FeedCache:
     @staticmethod
     def repopulate_global_feed():
         posts = list(Post.collection.find({}).sort("created_at",DESCENDING).limit(100))
-        for post in posts:
-            FeedCache.add_post_to_feed(
-                user_id=post["user_id"],
-                post_id=str(post["_id"]),
-                created_at=time.time()
-            )
+        if posts!=[]:
+
+            for post in posts:
+                FeedCache.add_post_to_feed(
+                    user_id=post["user_id"],
+                    post_id=str(post["_id"]),
+                    created_at=time.time()
+                )
     @staticmethod
     def add_post_to_feed(user_id,post_id):
         followers_cache = redis_client.smembers(f"followers:{user_id}")
