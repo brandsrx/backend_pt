@@ -68,11 +68,7 @@ def create_post():
 
 @post_bp.route('/<post_id>', methods=['GET'])
 def get_post(post_id):
-    post = cache.get_post(post_id)
-    if post:
-        return jsonify(post),200
     result, status_code = PostService.get_post(post_id)
-    
     return jsonify(result), status_code
 
 

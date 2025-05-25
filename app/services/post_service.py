@@ -52,37 +52,39 @@ class PostService:
     
     @staticmethod
     def get_posts(posts_ids:list,page=1, limit=20):
-        
-        object_ids = [ObjectId(post_id) for post_id in posts_ids]
-        posts = list(Post.collection.find(
-            {"_id":{"$in":object_ids}}
-        ))
-        
-        posts_list = []
-        for post in posts:
-            post_user = User.find_by_id(post['user_id'])
+        try:
+            object_ids = [ObjectId(post_id) for post_id in posts_ids]
+            posts = list(Post.collection.find(
+                {"_id":{"$in":object_ids}}
+            ))
             
-            post_data = {
-                "id": str(post['_id']),
-                "content": post['content'],
-                "media_urls": post.get('media_urls', []),
-                "likes_count": post.get('likes_count', 0),
-                "comment_count":post.get('comments_count',0),
-                "created_at": post['created_at'].isoformat(),
-                "author": {
-                    "id": str(post_user['_id']),
-                    "username": post_user['username'],
-                    "profile_pic_url": post_user.get('profile_pic_url', '')
+            posts_list = []
+            for post in posts:
+                post_user = User.find_by_id(post['user_id'])
+                
+                post_data = {
+                    "id": str(post['_id']),
+                    "content": post['content'],
+                    "media_urls": post.get('media_urls', []),
+                    "likes_count": post.get('likes_count', 0),
+                    "comment_count":post.get('comments_count',0),
+                    "created_at": post['created_at'].isoformat(),
+                    "author": {
+                        "id": str(post_user['_id']),
+                        "username": post_user['username'],
+                        "profile_pic_url": post_user.get('profile_pic_url', '')
+                    }
                 }
-            }
-            posts_list.append(post_data)
+                posts_list.append(post_data)
         
-        return {
-            "posts": posts_list,
-            "page": page,
-            "limit": limit
-        }, 200
-    
+            return {
+                "posts": posts_list,
+                "page": page,
+                "limit": limit
+            }, 200
+        except Exception as ex:
+            return {'message':'no se pudo cargar los post',"posts":[]},203
+        
     @staticmethod
     def delete_post(post_id, user_id):
         """Elimina una publicación si pertenece al usuario"""

@@ -281,16 +281,16 @@ def search():
 def users_recommend():
     user_id = get_jwt_identity()
     users:list = TimeLineService.get_list_user(user_id=user_id)
-    print("userssssssss222222222222222222")
-    print(users)
-    cache_key = f"recommendations:users:{user_id}"
-    if redis_client.exists(cache_key) and users != []:
-        cached = redis_client.get(cache_key)
-        return jsonify(json.loads(cached))
-    users = [{
-        'username':user['username'],
-        'profile_pic_url':user['profile_pic_url']}
-        for user in users
-        ]
-    redis_client.set(cache_key, json.dumps(users), ex=3600)
-    return users
+    if users != []:
+        cache_key = f"recommendations:users:{user_id}"
+        if redis_client.exists(cache_key) and users != []:
+            cached = redis_client.get(cache_key)
+            return jsonify(json.loads(cached))
+        users = [{
+            'username':user['username'],
+            'profile_pic_url':user['profile_pic_url']}
+            for user in users
+            ]
+        redis_client.set(cache_key, json.dumps(users), ex=3600)
+        return users
+    return []
