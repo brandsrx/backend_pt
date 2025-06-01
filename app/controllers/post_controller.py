@@ -49,12 +49,12 @@ def create_post():
 
     uploader = UploadFile(username=user_id, target_folder="posts")
     saved_paths = uploader.process_images(files)
-
+    print(saved_paths)
     urls = [
         url_for('static', filename=path, _external=True)
         for path in saved_paths
     ]
-
+    print(urls)
 
     result, status_code = PostService.create_post(
         user_id=user_id,

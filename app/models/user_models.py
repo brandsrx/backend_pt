@@ -72,6 +72,8 @@ class User:
         except Exception as ex:
             print('ocurrio un errror a la hora de procesar')
             return False
+    
+
     @staticmethod
     def get_following_by_user_id(user_id):
         try:

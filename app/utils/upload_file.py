@@ -57,6 +57,7 @@ class UploadFile:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = []
+            name_url = []
             for file in files:
                 if not self.allowed_file(file.filename):
                     continue
@@ -66,11 +67,12 @@ class UploadFile:
                 in_memory_file = BytesIO(file.read())
                 in_memory_file.seek(0)
                 in_memory_file.name = file.filename  # Para errores más claros
+                name_url.append(filename)
                 futures.append(executor.submit(self.compress_file, in_memory_file, save_path))
 
-            for future in futures:
+            for index,future in enumerate(futures):
                 result = future.result()
                 if result:
-                    saved_urls.append(f"uploads/{self.username}/{self.target_folder}/{filename}")
+                    saved_urls.append(f"uploads/{self.username}/{self.target_folder}/{name_url[index]}")
 
         return saved_urls

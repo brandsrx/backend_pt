@@ -16,6 +16,20 @@ class UserService:
             profile_pic_url=profile_pic_url,
             is_private=is_private
         )
+    
+    @staticmethod
+    def verify_follower(user_id, follower_id):
+        exists_follower = User.collection.find_one({
+            "_id": ObjectId(user_id),
+            "followers": {
+                "$elemMatch": {
+                    "user_id": follower_id
+                }
+            }
+        })
+
+        return exists_follower is not None
+    
     @staticmethod
     def get_user_by_id(user_id: str) -> Optional[Dict]:
         return User.find_by_id(user_id)

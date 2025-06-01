@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app,url_for
 from werkzeug.exceptions import BadRequest, NotFound, Unauthorized
-from flask_jwt_extended import jwt_required,get_jwt_identity
+from flask_jwt_extended import jwt_required,get_jwt_identity,verify_jwt_in_request
 from datetime import datetime, timedelta
 from app.services.user_service import UserService
 from bson import ObjectId
@@ -121,14 +121,26 @@ def change_password():
         current_app.logger.error(f"Error changing password: {str(e)}")
         return jsonify({'message': 'Error changing password'}), 500
 
+@user_bp.route("/check-follower", methods=["POST"])
+def check_follower():
+    data = request.get_json()
+    user_id = get_jwt_identity()
+    follower_id = data.get("followerId")
+
+    try:
+        result = UserService.verify_follower(user_id=user_id,follower_id=follower_id)
+
+        return jsonify({"isFollowing": result is not None}),200
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
 
 @user_bp.route('/<username>', methods=['GET'])
-@verify_current_user("profile")
 def get_user_by_username(username):
     """Get public user profile by username"""
-    #verify in cache redis
-
     user = UserService.get_user_by_username(username)
+
     if not user:
         return jsonify({'message': 'User not found'}), 404
     user_id = str(user['_id'])
