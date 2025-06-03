@@ -85,6 +85,24 @@ class Post:
                    .sort("created_at", -1)
                    .skip(skip)
                    .limit(limit))
+    @staticmethod
+    def update_post(post_id, user_id, content=None, media_urls=None):
+        """Actualiza el contenido o medios de una publicación"""
+        update_data = {"$set": {"updated_at": datetime.utcnow()}}
+        
+        if content is not None:
+            update_data["$set"]["content"] = content
+        if media_urls is not None:
+            update_data["$set"]["media_urls"] = media_urls
+            
+        result = Post.collection.update_one(
+            {
+                "_id": ObjectId(post_id),
+                "user_id": user_id
+            },
+            update_data
+        )
+        return result.modified_count > 0
     
     @staticmethod
     def delete_by_id(post_id, user_id):

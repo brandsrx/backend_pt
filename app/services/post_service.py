@@ -22,6 +22,16 @@ class PostService:
             "message": "Publicación creada correctamente",
             "post_id": post_id
         }, 201
+    @staticmethod
+    def update_post(post_id:str,user_id,content,media_urls):
+        try:
+            result = Post.update_post(post_id,user_id,content,media_urls)
+            if result:
+                return {"message":"Publicacion actualizada"},200
+            return {"message":"No se pudo actualizar el post"},203
+        except Exception as ex:
+            return {"error":"Ocurrio un error inesperado"},400
+        
 
     @staticmethod
     def get_post(post_id):

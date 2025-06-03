@@ -49,12 +49,12 @@ def create_post():
 
     uploader = UploadFile(username=user_id, target_folder="posts")
     saved_paths = uploader.process_images(files)
-
+    print(saved_paths)
     urls = [
         url_for('static', filename=path, _external=True)
         for path in saved_paths
     ]
-
+    print(urls)
 
     result, status_code = PostService.create_post(
         user_id=user_id,
@@ -70,6 +70,23 @@ def create_post():
 def get_post(post_id):
     result, status_code = PostService.get_post(post_id)
     return jsonify(result), status_code
+
+@post_bp.route("/<post_id>",methods=["PUT"])
+def update_post(post_id):
+    user_id = get_jwt_identity()
+    content = request.form.get('content', '')
+    files = request.files.getlist('image')
+    urls = None
+    if files != []:
+        uploader = UploadFile(username=user_id, target_folder="posts")
+        saved_paths = uploader.process_images(files)
+
+        urls = [
+            url_for('static', filename=path, _external=True)
+            for path in saved_paths
+        ]
+    result,status_code = PostService.update_post(post_id,user_id=user_id,content=content,urls=urls)
+    return jsonify(result),status_code
 
 
 @post_bp.route('/<post_id>', methods=['DELETE'])

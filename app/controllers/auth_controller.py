@@ -43,7 +43,12 @@ def register():
         return jsonify({
             'message': 'User registered successfully',
             'token': token,
-            'user_id': user_id
+            'user': {
+                'id': user_id,
+                'username': username,
+                'email': email,
+                'profile_pic_url':url
+            }
         }), 201
 
     except ValueError as e:
@@ -84,7 +89,8 @@ def login():
             'user': {
                 'id': str(user['_id']),
                 'username': user['username'],
-                'email': user['email']
+                'email': user['email'],
+                'profile_pic_url': user['profile_pic_url']
             }
         }), 200
         
